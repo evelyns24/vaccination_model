@@ -39,3 +39,96 @@ not_sick_population=population[population['is_sick']==False]
 
 
 
+
+import random
+
+
+class Person:
+    def __init__(self, post_infection, severity, connectivity, days_infected):
+        self.post_infection = post_infection
+        self.severity = severity
+        self.connectivity = connectivity
+        self.days_infected = days_infected
+
+
+def timestep_infection(population, C, T):
+    total_connectivity = sum(person.connectivity for person in population if person.post_infection < T)
+    infected_connectivity = sum(
+        person.connectivity for person in population if person.post_infection >= 0 and person.days_infected > 0)
+
+    infection_rate = infected_connectivity / total_connectivity
+
+    for person in population:
+        if person.post_infection == -1:
+            p = person.connectivity * infection_rate * C
+            if random.random() < p:
+                person.post_infection = 0
+                person.days_infected = 14  # Example: infected for 14 days
+        elif person.post_infection >= 0:
+            if person.days_infected > 0:
+                person.days_infected -= 1
+                if person.days_infected == 0:
+                    person.post_infection = person.severity
+
+
+def value_function(population, T):
+    total_value = 0
+    for person in population:
+        if person.post_infection == -1:
+            total_value += 1  # Never infected
+        elif person.post_infection < T:
+            if person.days_infected > 0:
+                # Account for individuals mid-infection at the end of the simulation
+                final_severity = person.severity
+                total_value += 1 - (final_severity / 10)  # Scale severity to [0, 1] range
+            else:
+                total_value += 1 - (person.post_infection / 10)  # Scale post_infection to [0, 1] range
+    return total_value / len(population)
+
+
+def run_simulation(population, timesteps, C, T):
+    for _ in range(timesteps):
+        timestep_infection(population, C, T)
+
+    overall_impact = value_function(population, T)
+    return overall_impact
+
+
+def analyze_post_infection_distribution(population, T):
+    never_infected = sum(1 for person in population if person.post_infection == -1)
+    mild_outcome = sum(1 for person in population if 0 <= person.post_infection < 3)
+    moderate_outcome = sum(1 for person in population if 3 <= person.post_infection < 6)
+    severe_outcome = sum(1 for person in population if 6 <= person.post_infection < T)
+    deceased = sum(1 for person in population if person.post_infection >= T)
+
+    total_population = len(population)
+
+    print("Post-Infection Distribution:")
+    print(f"Never Infected: {never_infected} ({never_infected / total_population * 100:.2f}%)")
+    print(f"Mild Outcome: {mild_outcome} ({mild_outcome / total_population * 100:.2f}%)")
+    print(f"Moderate Outcome: {moderate_outcome} ({moderate_outcome / total_population * 100:.2f}%)")
+    print(f"Severe Outcome: {severe_outcome} ({severe_outcome / total_population * 100:.2f}%)")
+    print(f"Deceased: {deceased} ({deceased / total_population * 100:.2f}%)")
+
+
+# Test case
+population_size = 100000
+initial_infected = 100
+timesteps = 120  # Simulating 120 days
+C = 0.1
+T = 8  # Threshold for considering an individual as deceased
+
+population = [Person(-1, random.uniform(0, 10), random.randint(1, 20), 0) for _ in range(population_size)]
+
+# Infect initial individuals
+for i in range(initial_infected):
+    population[i].post_infection = 0
+    population[i].days_infected = 14
+
+overall_impact = run_simulation(population, timesteps, C, T)
+print(f"Overall Impact (Value Function): {overall_impact:.4f}")
+
+analyze_post_infection_distribution(population, T)
+
+
+
