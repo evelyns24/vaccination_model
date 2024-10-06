@@ -34,15 +34,14 @@ else:
     else:
         m.is_infected = false
 
-# Cost function        
+# Cost function       
 
 
-
-"""
+"""       
 
 # define a structured data type to represent a person
 # 5 fields: is_sick, severity, connectivity, days_infectious, status
-person = [('is_sick','b'),""
+person = [('is_sick','b'),
           ('severity','i'),
           ('connectivity','i'),
           ('day_infectious','i'),
@@ -64,44 +63,32 @@ population['status'] = np.random.choice(status_terms, size=N)
 
 
 
-# compute infection of rate of connections
-sick_population=population[population['is_sick']==True]
-sum_connectivity_sick = np.sum(sick_population['connectivity'])
-total_connectivity=np.sum(population['connectivity'])
-infection_rate=sum_connectivity_sick/total_connectivity
-
 
 not_sick_population=population[population['is_sick']==False]
 
 
-    
 
 
 
-
-
-import random
-
-#No reinfection is allowed in here
-class Person:
-    def __init__(self, post_infection, severity, connectivity, days_infected):
-        self.post_infection = post_infection
-        self.severity = severity
-        self.connectivity = connectivity
-        self.days_infected = days_infected
 
 
 def timestep_infection(population, C, T):
-    total_connectivity = sum(person.connectivity for person in population if person.post_infection < T)
-    infected_connectivity = sum(
-        person.connectivity for person in population if person.post_infection >= 0 and person.days_infected > 0)
+    # compute infection of rate of connections
+    sick_population=population[population['is_sick']==True]
+    sum_connectivity_sick = np.sum(sick_population['connectivity'])
+    total_connectivity=np.sum(population['connectivity'])
+    infection_rate=sum_connectivity_sick/total_connectivity
 
-    infection_rate = infected_connectivity / total_connectivity
+    not_sick_population = population[population['is_sick']==False]
+    prob_infection = C * infection_rate * not_sick_population['connectivity']
+    
+
+    
 
     for person in population:
         if person.post_infection == -1:
             p = person.connectivity * infection_rate * C
-            if random.random() < p:
+            if np.random.random() < p:
                 person.post_infection = 0
                 person.days_infected = 14  # Example: infected for 14 days
         elif person.post_infection >= 0:
@@ -169,6 +156,5 @@ overall_impact = run_simulation(population, timesteps, C, T)
 print(f"Overall Impact (Value Function): {overall_impact:.4f}")
 
 analyze_post_infection_distribution(population, T)
-
 
 
