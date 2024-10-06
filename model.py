@@ -1,8 +1,48 @@
 import numpy as np
 
+"""
+# State variables:
+connectivity: integer between 0 and 40 
+– "How many people do I closely interact with in each timestep?"
+
+case_severity: decimal between 0 and 5
+- "If infected, how bad does it get for this person?"
+
+infection_period: integer between 0 and 6
+- "If I'm currently uninfected, how many days am I going to be infectious for?" -> randomly between 4 and 6 days.
+- "If I am infected, how many more days am I infectious for?" -> decrements on each timestep.
+
+is_infected: boolean
+- True if the person is currently infected.
+
+
+# State evolution:
+Given state at time t, to calculate state at time t+1,
+
+sick_edges = filter for members of the population who are sick, and sum their connectivity
+all_edges = sum connectivity
+ratio = sick_edges/all_edges
+
+for all members m in the population, 
+if (!is_infected) :
+    p_infection = ratio * m.connectivity # probability of infection
+    generate random number between 0 and 1. If num < p_infection,
+    m.is_sick = true
+else:
+    if m.infection_period > 0:
+        m.infection_period--
+    else:
+        m.is_infected = false
+
+# Cost function        
+
+
+
+"""
+
 # define a structured data type to represent a person
 # 5 fields: is_sick, severity, connectivity, days_infectious, status
-person = [('is_sick','b'),
+person = [('is_sick','b'),""
           ('severity','i'),
           ('connectivity','i'),
           ('day_infectious','i'),
