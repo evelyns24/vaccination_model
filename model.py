@@ -55,8 +55,8 @@ status_terms = ['never infected',
 N=107000
 population=np.zeros(N, dtype=person)
 
-population['connectivity'] = N*np.random.random(size=N)
-population['severity'] = 10*np.random.random(size=N)
+population['connectivity'] = N*np.random.random(0, 40, size=N)
+population['severity'] = 5*np.random.random(size=N)
 population['days_infectious'] = np.random.randint(0, 8, size=N)  
 population['is_sick'] = population['days_infectious'] > 0
 population['status'] = np.random.choice(status_terms, size=N)
@@ -79,11 +79,23 @@ def timestep_infection(population, C, T):
     total_connectivity=np.sum(population['connectivity'])
     infection_rate=sum_connectivity_sick/total_connectivity
 
+    # compute likelihood of infection
     not_sick_population = population[population['is_sick']==False]
     prob_infection = C * infection_rate * not_sick_population['connectivity']
     
+    # determine whether or not person will be infected and updating states for newly infected people
+    random=np.random.random(size=not_sick_population.size)
+    newly_infected_people = not_sick_population[random<prob_infection]
+    newly_infected_indices = np.isin(population, newly_infected_people)
+    population['is_sick'][newly_infected_indices] = True
+    population['day_infectious'][newly_infected_indices] = 6
 
-    
+    # updating states for those already infected
+    sick_indices = np.isin(population, sick_population)
+    population['day_infectious'][sick_indices]-=1
+    # if day_infectious==0, change status
+    population['status'][population['day_infectious']==0] = 
+
 
     for person in population:
         if person.post_infection == -1:
