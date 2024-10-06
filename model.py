@@ -42,7 +42,7 @@ not_sick_population=population[population['is_sick']==False]
 
 import random
 
-
+#No reinfection is allowed in here
 class Person:
     def __init__(self, post_infection, severity, connectivity, days_infected):
         self.post_infection = post_infection
