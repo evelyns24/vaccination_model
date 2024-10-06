@@ -1,3 +1,3 @@
 # vaccination_model
 
-Yuvraj Sarda
+Yuvraj Sarda (ys2256)
