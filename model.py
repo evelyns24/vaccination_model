@@ -1,6 +1,8 @@
 import numpy as np
 
 """
+Define the state of the system
+
 # State variables:
 connectivity: integer between 0 and 40 
 – "How many people do I closely interact with in each timestep?"
@@ -12,11 +14,35 @@ infection_period: integer between 0 and 6
 - "If I'm currently uninfected, how many days am I going to be infectious for?" -> randomly between 4 and 6 days.
 - "If I am infected, how many more days am I infectious for?" -> decrements on each timestep.
 
-is_infected: boolean
-- True if the person is currently infected.
+current_state: integer between -1 and 1
+- -1 if dead
+- 0 if uninfected
+- 1 if infected
+"""
+t = 0 # time step we are currently at
+N=107000 # Population size
+# define a structured data type to represent a person
+Person = [  ('connectivity','i'),
+            ('case_severity','f'),
+            ('infection_period','i'),
+            ('current_state','i')] 
+
+population=np.zeros(N, dtype=Person)
+init_infections = 10 # how many people were infected at start of simulation
+
+# Initialize the state
+population['connectivity'] = np.random.randint(0, 41, size=N)
+population['case_severity'] = np.random.random(size=N)*5
+population['infection_period'] = np.random.randint(4, 7, size=N)  
+population['current_state'] = 0  # Initially, all are uninfected
+
+# Randomly chooses `init_infections` number of people and sets them to infected
+population['current_state'][np.random.choice(N, init_infections, replace=False)] = 1
 
 
-# State evolution:
+"""
+Takes state and evolves it naturally by one timestep. Mutates population.
+
 Given state at time t, to calculate state at time t+1,
 
 sick_edges = filter for members of the population who are sick, and sum their connectivity
@@ -33,103 +59,83 @@ else:
         m.infection_period--
     else:
         m.is_infected = false
+"""
+def evolve_state(population, C, death_threshold):
+    # Filter who is infected currently
+    infected_population_mask=population['current_state']==1
+    infected_population = population[infected_population_mask]
+    # Filter who is uninfected currently
+    uninfected_population_mask = population['current_state']==0
+    uninfected_population = population[uninfected_population_mask]
 
-# Cost function       
+    ## Deal with the uninfected people
+    # compute the general infection rate in the population
+    infected_edges = np.sum(infected_population['connectivity'])
+    total_edges = np.sum(population['connectivity'])
+    infection_rate = C * (infected_edges / total_edges)
 
-
-"""       
-
-# define a structured data type to represent a person
-# 5 fields: is_sick, severity, connectivity, days_infectious, status
-person = [('is_sick','b'),
-          ('severity','i'),
-          ('connectivity','i'),
-          ('day_infectious','i'),
-          ('status','U20')]
-
-status_terms = ['never infected',
-                'partially immunized',
-                'severely crippled',
-                'dead']
-
-N=107000
-population=np.zeros(N, dtype=person)
-
-population['connectivity'] = N*np.random.random(0, 40, size=N)
-population['severity'] = 5*np.random.random(size=N)
-population['days_infectious'] = np.random.randint(0, 8, size=N)  
-population['is_sick'] = population['days_infectious'] > 0
-population['status'] = np.random.choice(status_terms, size=N)
-
-
-
-
-not_sick_population=population[population['is_sick']==False]
-
-
-
-
-
-
-
-def timestep_infection(population, C, T):
-    # compute infection of rate of connections
-    sick_population=population[population['is_sick']==True]
-    sum_connectivity_sick = np.sum(sick_population['connectivity'])
-    total_connectivity=np.sum(population['connectivity'])
-    infection_rate=sum_connectivity_sick/total_connectivity
-
-    # compute likelihood of infection
-    not_sick_population = population[population['is_sick']==False]
-    prob_infection = C * infection_rate * not_sick_population['connectivity']
+    # compute likelihood of infection for the uninfected population
+    prob_infection = infection_rate * uninfected_population['connectivity']
     
-    # determine whether or not person will be infected and updating states for newly infected people
-    random=np.random.random(size=not_sick_population.size)
-    newly_infected_people = not_sick_population[random<prob_infection]
-    newly_infected_indices = np.isin(population, newly_infected_people)
-    population['is_sick'][newly_infected_indices] = True
-    population['day_infectious'][newly_infected_indices] = 6
+    # Determine whether or not person will be infected and updating states for newly infected people
+    # random outcomes for uninfected people
+    random=np.random.random(size=uninfected_population.size)
+    # create a mask for individuals who should be infected based on their probability of infection
+    should_infect_mask=random < prob_infection
+    # get indices of newly infected people in the population
+    uninfected_indices = np.where(uninfected_population_mask)[0]
+    newly_infected_indices = uninfected_indices[should_infect_mask]
+    # update current_state
+    population['current_state'][newly_infected_indices] = 1
 
-    # updating states for those already infected
-    sick_indices = np.isin(population, sick_population)
-    population['day_infectious'][sick_indices]-=1
-    # if day_infectious==0, change status
-    population['status'][population['day_infectious']==0] = 
+    ## Deal with the infected people
+    # Handle people whose infection period ended (checking case_severity to see if they died)
+    dead_population_indices = np.where((population['current_state'] == 1) & 
+                                       (population['infection_period'] == 0) & 
+                                       (population['case_severity'] >= death_threshold))[0]
+    population['current_state'][dead_population_indices] = -1 # mark them as dead
 
-
-    for person in population:
-        if person.post_infection == -1:
-            p = person.connectivity * infection_rate * C
-            if np.random.random() < p:
-                person.post_infection = 0
-                person.days_infected = 14  # Example: infected for 14 days
-        elif person.post_infection >= 0:
-            if person.days_infected > 0:
-                person.days_infected -= 1
-                if person.days_infected == 0:
-                    person.post_infection = person.severity
+    # handle infected people whose infection period did not end yet
+    remain_infected_population_indices = np.where((population['current_state'] == 1) &
+                                                  (population['infection_period'] != 0))[0]
+    population['infection_period'][remain_infected_population_indices] -= 1 
+    
 
 
-def value_function(population, T):
-    total_value = 0
-    for person in population:
-        if person.post_infection == -1:
-            total_value += 1  # Never infected
-        elif person.post_infection < T:
-            if person.days_infected > 0:
-                # Account for individuals mid-infection at the end of the simulation
-                final_severity = person.severity
-                total_value += 1 - (final_severity / 10)  # Scale severity to [0, 1] range
-            else:
-                total_value += 1 - (person.post_infection / 10)  # Scale post_infection to [0, 1] range
-    return total_value / len(population)
+"""
+Simulates the effect of vaccinating the population filtered by `who` (reduces case_sensitivity by 90%). 
+Mutates population.
+Parameters:
+    - 'who' should be 'connectivity', 'case_sensitivity", or 'mixed'
+    - how_many: integer between 2000 and 4000
+"""
+def vaccinate(population, who, how_many):
+    if who=='mixed':
+        # how do u do mixed??????
+        a=0
+    else:
+        # sort indices based on 'who' and select the top individuals
+        vaccinate_population_indices = np.argsort(population[who])[::-1][:how_many]
+        
+    # reduce case_severity by 90% for selected people 
+    population['case_sensitivity'][vaccinate_population_indices] *= 0.1
+
+
+"""
+Compute the cost to society that has been incurred at the current state.
+""" 
+def compute_cost(population):
+    was_infected = population['infection_period'] < 4
+    return np.sum(population['case_severity'][was_infected])
+
+
 
 
 def run_simulation(population, timesteps, C, T):
     for _ in range(timesteps):
-        timestep_infection(population, C, T)
+        evolve_state(population, C, T)
 
-    overall_impact = value_function(population, T)
+    overall_impact = compute_cost(population, T)
     return overall_impact
 
 
