@@ -19,10 +19,6 @@ current_state: integer between -1 and 2
 - 0 if never infected
 - 1 if recovered (and so is uninfected now)
 - 2 if infected
-
-immunity_period: integer between 0 and 14
-- track how long a person is immune after recovering or recieving a vaccine
-- once this period is over, they become susceptible to reinfection again
 """
 N=107000 # Population size
 init_infections = 10 # how many people were infected at start of simulation
@@ -30,18 +26,15 @@ max_connectivity = 40
 max_severity = 10
 vaccine_immunization = 0.1 # vaccines reduce case_severity by 90%
 partial_immunization = 0.1 # reduce case_severity by 90% after recovering from infection
-max_immunity_period = 14 # immune for 14 timesteps after recovery/vaccination
 
 # define a structured data type to represent a person
 Person = [  ('connectivity','i'),
             ('case_severity','f'),
             ('infection_period','i'),
-            ('current_state','i'),
-            ('immunity_period','i')] 
+            ('current_state','i')] 
 
 """
 initializes a population and returns it
-assign parameter 'seed' different values to get different population initializations 
 """
 def init_population(N, init_infections, max_connectivity, max_severity, seed=0):
     population=np.zeros(N, dtype=Person)
@@ -53,7 +46,6 @@ def init_population(N, init_infections, max_connectivity, max_severity, seed=0):
     population['case_severity'] = np.random.random(size=N)*max_severity
     population['infection_period'] = np.random.randint(4, 7, size=N)  
     population['current_state'] = 0  # Initially, all are never infected (uninfected)
-    population['immunity_period'] = 0  # Initially, no one is immune
 
     # Randomly chooses `init_infections` number of people and sets them to infected
     population['current_state'][np.random.choice(N, init_infections, replace=False)] = 2
@@ -85,8 +77,8 @@ def evolve_state(population, C, death_threshold):
     # Filter who is infected currently
     infected_population_mask=(population['current_state']==0) | (population['current_state']==1)
     infected_population = population[infected_population_mask]
-    # Filter who is uninfected and has no immunity
-    uninfected_population_mask = (population['current_state']==0) & (population['immunity_period']==0)
+    # Filter who is uninfected currently
+    uninfected_population_mask = population['current_state']==0
     uninfected_population = population[uninfected_population_mask]
 
     ## Deal with the uninfected people
@@ -116,7 +108,6 @@ def evolve_state(population, C, death_threshold):
                                        (population['case_severity'] >= death_threshold))[0]
     population['current_state'][dead_population_indices] = -1 # mark them as dead
 
-
     recovered_population_indices = np.where((population['current_state'] == 2) & 
                                        (population['infection_period'] == 0) & 
                                        (population['case_severity'] < death_threshold))[0]
@@ -125,17 +116,11 @@ def evolve_state(population, C, death_threshold):
     population['infection_period'][recovered_population_indices] = np.random.randint(4, 7)  
     # reduce case_severity due partial immunization
     population['case_severity'][recovered_population_indices] *= partial_immunization
-    # set immunity period
-    population['immunity_period'][recovered_population_indices] = max_immunity_period
 
     # handle infected people whose infection period did not end yet
     remain_infected_population_indices = np.where((population['current_state'] == 2) &
                                                   (population['infection_period'] != 0))[0]
     population['infection_period'][remain_infected_population_indices] -= 1 
-
-    # Decrease immunity_period for those who have immunity left
-    immune_population_indices = np.where(population['immunity_period'] > 0)[0]
-    population['immunity_period'][immune_population_indices] -= 1 
     
 
 """
@@ -172,9 +157,6 @@ def vaccinate(population, who, how_many):
         
     # reduce case_severity by 90% for selected people 
     population['case_severity'][vaccinate_population_indices] *= vaccine_immunization
-
-    # set immunity_period for vaccinated people to max_immunity_period
-    population['immunity_period'][vaccinate_population_indices] = max_immunity_period
 
 
 """
