@@ -19,25 +19,33 @@ current_state: integer between -1 and 1
 - 0 if uninfected
 - 1 if infected
 """
-t = 0 # time step we are currently at
 N=107000 # Population size
+init_infections = 10 # how many people were infected at start of simulation
+max_connectivity = 40
+max_severity = 10
+
 # define a structured data type to represent a person
 Person = [  ('connectivity','i'),
             ('case_severity','f'),
             ('infection_period','i'),
             ('current_state','i')] 
 
-population=np.zeros(N, dtype=Person)
-init_infections = 10 # how many people were infected at start of simulation
+"""
+initializes a population and returns it
+"""
+def init_population(N, init_infections, max_connectivity, max_severity):
+    population=np.zeros(N, dtype=Person)
 
-# Initialize the state
-population['connectivity'] = np.random.randint(0, 41, size=N)
-population['case_severity'] = np.random.random(size=N)*10
-population['infection_period'] = np.random.randint(4, 7, size=N)  
-population['current_state'] = 0  # Initially, all are uninfected
+    # Initialize the state
+    population['connectivity'] = np.random.randint(0, max_connectivity+1, size=N)
+    population['case_severity'] = np.random.random(size=N)*max_severity
+    population['infection_period'] = np.random.randint(4, 7, size=N)  
+    population['current_state'] = 0  # Initially, all are uninfected
 
-# Randomly chooses `init_infections` number of people and sets them to infected
-population['current_state'][np.random.choice(N, init_infections, replace=False)] = 1
+    # Randomly chooses `init_infections` number of people and sets them to infected
+    population['current_state'][np.random.choice(N, init_infections, replace=False)] = 1
+
+    return population
 
 
 """
@@ -101,18 +109,34 @@ def evolve_state(population, C, death_threshold):
     population['infection_period'][remain_infected_population_indices] -= 1 
     
 
+"""
+Returns the score of each person in the population. The score of an individual is a 
+weighted average of connectivity and case_severity. 
+People with highest score will get vaccine in mixed_score policy
+Parameter:
+    - w_c is the weighting factor for connectivity and so (1-w_c) is the weighting factor for case_severity
+"""
+def compute_score(population, w_c):
+    score = (population['connectivity']*w_c/max_connectivity) + (population['case_severity']*(1-w_c)/max_severity)
+    return score
+
 
 """
 Simulates the effect of vaccinating the population filtered by `who` (reduces case_sensitivity by 90%). 
 Mutates population.
 Parameters:
-    - 'who' should be 'connectivity', 'case_sensitivity", or 'mixed'
+    - 'who' should be 'connectivity', 'case_sensitivity", or 'mixed_score'
     - how_many: integer between 2000 and 4000
 """
 def vaccinate(population, who, how_many):
-    if who=='mixed':
-        # how do u do mixed??????
-        a=0
+    if who=='mixed_score':
+        # compute score
+        w_c = 0.3  # connectivity gets a lower weight 
+        scores = compute_score(population, w_c)
+
+        # sort sort indices based on 'who' and select the top individuals
+        vaccinate_population_indices = np.argsort(scores)[::-1][:how_many]
+
     else:
         # sort indices based on 'who' and select the top individuals
         vaccinate_population_indices = np.argsort(population[who])[::-1][:how_many]
@@ -139,33 +163,18 @@ def run_simulation(population, timesteps, C, T):
     return overall_cost
 
 
-def analyze_post_infection_distribution(population, T):
-    never_infected = sum(1 for person in population if person.post_infection == -1)
-    mild_outcome = sum(1 for person in population if 0 <= person.post_infection < 3)
-    moderate_outcome = sum(1 for person in population if 3 <= person.post_infection < 6)
-    severe_outcome = sum(1 for person in population if 6 <= person.post_infection < T)
-    deceased = sum(1 for person in population if person.post_infection >= T)
-
-    total_population = len(population)
-
-    print("Post-Infection Distribution:")
-    print(f"Never Infected: {never_infected} ({never_infected / total_population * 100:.2f}%)")
-    print(f"Mild Outcome: {mild_outcome} ({mild_outcome / total_population * 100:.2f}%)")
-    print(f"Moderate Outcome: {moderate_outcome} ({moderate_outcome / total_population * 100:.2f}%)")
-    print(f"Severe Outcome: {severe_outcome} ({severe_outcome / total_population * 100:.2f}%)")
-    print(f"Deceased: {deceased} ({deceased / total_population * 100:.2f}%)")
-
-
-
 
 timesteps = 120  # Simulating 120 days
-months = 3
+months = 4
 C = 0.1
 T = 8  # Threshold for considering an individual as deceased
 
 # no policy: no vaccines 
-overall_cost = run_simulation(population, timesteps, C, T)
-print(f"Overall Cost: {overall_cost:.4f}")
+overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                              timesteps, 
+                              C, 
+                              T)
+print(f"Overall Cost if no vaccines at all: {overall_cost:.4f}")
 
 
 ## scenario 1: exactly 3000 vaccines available each month
@@ -173,35 +182,66 @@ print("Scenario 1: exactly 3000 vaccines per month")
 # policy 1: distributing vaccines based on connectivity
 for _ in range(months):
     vaccine = 3000
-    vaccinate(population,'connectivity', vaccine)
-    overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Cost: {overall_cost:.4f}")
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'connectivity', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Connectivity Policy: {overall_cost:.4f}")
 
 # policy 2: distributing vaccines based on case_severity
 for _ in range(months):
     vaccine = 3000
-    vaccinate(population,'case_severity', vaccine)
-    overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Cost: {overall_cost:.4f}")
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'case_severity', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Case_Severity Policy: {overall_cost:.4f}")
+
+# policy 3: distributing vaccines based on mixed_score 
+# (weighted average of connetivity and case_severity)
+for _ in range(months):
+    vaccine = 3000
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'mixed_score', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Mixed_Score Policy : {overall_cost:.4f}")
+
 
 
 
 ## scenario 2: vaccines available each month can be anywhere between 2000 and 4000
 print("Scenario 2: 2000 - 4000 vaccines per month")
 # policy 1: distributing vaccines based on connectivity
-for _ in range(months):
+for m in range(1,months+1):
     vaccine = np.random.randint(2000, 4001)
-    vaccinate(population,'connectivity', vaccine)
-    overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Cost: {overall_cost:.4f}")
+    # print(f"Vaccines available in month {m}: {vaccine}")
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'connectivity', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Connectivity Policy: {overall_cost:.4f}")
 
 # policy 2: distributing vaccines based on case_severity
-for _ in range(months):
+for m in range(1,months+1):
     vaccine = np.random.randint(2000, 4001)
-    vaccinate(population,'case_severity', vaccine)
-    overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Cost: {overall_cost:.4f}")
+    # print(f"Vaccines available in month {m}: {vaccine}")
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'case_severity', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Case_Severity Policy: {overall_cost:.4f}")
 
+# policy 3: distributing vaccines based on mixed_score 
+# (weighted average of connetivity and case_severity)
+for m in range(1,months+1):
+    vaccine = np.random.randint(2000, 4001)
+    # print(f"Vaccines available in month {m}: {vaccine}")
+    vaccinate(init_population(N, init_infections, max_connectivity, max_severity),
+              'mixed_score', vaccine)
+    overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity), 
+                                  30, C, T)
+print(f"Overall Cost with Mixed_Score Policy: {overall_cost:.4f}")
     
 
 
