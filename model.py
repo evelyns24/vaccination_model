@@ -7,7 +7,7 @@ Define the state of the system
 connectivity: integer between 0 and 40 
 – "How many people do I closely interact with in each timestep?"
 
-case_severity: decimal between 0 and 5
+case_severity: decimal between 0 and 10
 - "If infected, how bad does it get for this person?"
 
 infection_period: integer between 0 and 6
@@ -32,7 +32,7 @@ init_infections = 10 # how many people were infected at start of simulation
 
 # Initialize the state
 population['connectivity'] = np.random.randint(0, 41, size=N)
-population['case_severity'] = np.random.random(size=N)*5
+population['case_severity'] = np.random.random(size=N)*10
 population['infection_period'] = np.random.randint(4, 7, size=N)  
 population['current_state'] = 0  # Initially, all are uninfected
 
@@ -118,7 +118,7 @@ def vaccinate(population, who, how_many):
         vaccinate_population_indices = np.argsort(population[who])[::-1][:how_many]
         
     # reduce case_severity by 90% for selected people 
-    population['case_sensitivity'][vaccinate_population_indices] *= 0.1
+    population['case_severity'][vaccinate_population_indices] *= 0.1
 
 
 """
@@ -135,8 +135,8 @@ def run_simulation(population, timesteps, C, T):
     for _ in range(timesteps):
         evolve_state(population, C, T)
 
-    overall_impact = compute_cost(population, T)
-    return overall_impact
+    overall_cost = compute_cost(population)
+    return overall_cost
 
 
 def analyze_post_infection_distribution(population, T):
@@ -156,23 +156,52 @@ def analyze_post_infection_distribution(population, T):
     print(f"Deceased: {deceased} ({deceased / total_population * 100:.2f}%)")
 
 
-# Test case
-population_size = 100000
-initial_infected = 100
+
+
 timesteps = 120  # Simulating 120 days
+months = 3
 C = 0.1
 T = 8  # Threshold for considering an individual as deceased
 
-population = [Person(-1, random.uniform(0, 10), random.randint(1, 20), 0) for _ in range(population_size)]
+# no policy: no vaccines 
+overall_cost = run_simulation(population, timesteps, C, T)
+print(f"Overall Impact (Value Function): {overall_cost:.4f}")
 
-# Infect initial individuals
-for i in range(initial_infected):
-    population[i].post_infection = 0
-    population[i].days_infected = 14
 
-overall_impact = run_simulation(population, timesteps, C, T)
-print(f"Overall Impact (Value Function): {overall_impact:.4f}")
+## scenario 1: exactly 3000 vaccines available each month
+print("Scenario 1: exactly 3000 vaccines per month")
+# policy 1: distributing vaccines based on connectivity
+for _ in range(months):
+    vaccine = 3000
+    vaccinate(population,'connectivity', vaccine)
+    overall_cost = run_simulation(population, 30, C, T)
+print(f"Overall Impact (Value Function): {overall_cost:.4f}")
 
-analyze_post_infection_distribution(population, T)
+# policy 2: distributing vaccines based on case_severity
+for _ in range(months):
+    vaccine = 3000
+    vaccinate(population,'case_severity', vaccine)
+    overall_cost = run_simulation(population, 30, C, T)
+print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+
+
+
+## scenario 2: vaccines available each month can be anywhere between 2000 and 4000
+print("Scenario 2: 2000 - 4000 vaccines per month")
+# policy 1: distributing vaccines based on connectivity
+for _ in range(months):
+    vaccine = np.random.randint(2000, 4001)
+    vaccinate(population,'connectivity', vaccine)
+    overall_cost = run_simulation(population, 30, C, T)
+print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+
+# policy 2: distributing vaccines based on case_severity
+for _ in range(months):
+    vaccine = np.random.randint(2000, 4001)
+    vaccinate(population,'case_severity', vaccine)
+    overall_cost = run_simulation(population, 30, C, T)
+print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+
+    
 
 
