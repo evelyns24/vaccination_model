@@ -132,6 +132,9 @@ Parameter:
 """
 def compute_score(population, w_c):
     score = (population['connectivity']*w_c/max_connectivity) + (population['case_severity']*(1-w_c)/max_severity)
+    
+    # assign score=0 for dead people (so that they don't get vaccine)
+    score[population['current_state']==-1] = 0
     return score
 
 
