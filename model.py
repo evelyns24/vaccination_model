@@ -165,7 +165,7 @@ T = 8  # Threshold for considering an individual as deceased
 
 # no policy: no vaccines 
 overall_cost = run_simulation(population, timesteps, C, T)
-print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+print(f"Overall Cost: {overall_cost:.4f}")
 
 
 ## scenario 1: exactly 3000 vaccines available each month
@@ -175,14 +175,14 @@ for _ in range(months):
     vaccine = 3000
     vaccinate(population,'connectivity', vaccine)
     overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+print(f"Overall Cost: {overall_cost:.4f}")
 
 # policy 2: distributing vaccines based on case_severity
 for _ in range(months):
     vaccine = 3000
     vaccinate(population,'case_severity', vaccine)
     overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+print(f"Overall Cost: {overall_cost:.4f}")
 
 
 
@@ -193,14 +193,14 @@ for _ in range(months):
     vaccine = np.random.randint(2000, 4001)
     vaccinate(population,'connectivity', vaccine)
     overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+print(f"Overall Cost: {overall_cost:.4f}")
 
 # policy 2: distributing vaccines based on case_severity
 for _ in range(months):
     vaccine = np.random.randint(2000, 4001)
     vaccinate(population,'case_severity', vaccine)
     overall_cost = run_simulation(population, 30, C, T)
-print(f"Overall Impact (Value Function): {overall_cost:.4f}")
+print(f"Overall Cost: {overall_cost:.4f}")
 
     
 
