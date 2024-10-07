@@ -14,15 +14,18 @@ infection_period: integer between 0 and 6
 - "If I'm currently uninfected, how many days am I going to be infectious for?" -> randomly between 4 and 6 days.
 - "If I am infected, how many more days am I infectious for?" -> decrements on each timestep.
 
-current_state: integer between -1 and 1
+current_state: integer between -1 and 2
 - -1 if dead
-- 0 if uninfected
-- 1 if infected
+- 0 if never infected
+- 1 if recovered (and so is uninfected now)
+- 2 if infected
 """
 N=107000 # Population size
 init_infections = 10 # how many people were infected at start of simulation
 max_connectivity = 40
 max_severity = 10
+vaccine_immunization = 0.1 # vaccines reduce case_severity by 90%
+partial_immunization = 0.1 # reduce case_severity by 90% after recovering from infection
 
 # define a structured data type to represent a person
 Person = [  ('connectivity','i'),
@@ -42,10 +45,10 @@ def init_population(N, init_infections, max_connectivity, max_severity, seed=0):
     population['connectivity'] = np.random.randint(0, max_connectivity+1, size=N)
     population['case_severity'] = np.random.random(size=N)*max_severity
     population['infection_period'] = np.random.randint(4, 7, size=N)  
-    population['current_state'] = 0  # Initially, all are uninfected
+    population['current_state'] = 0  # Initially, all are never infected (uninfected)
 
     # Randomly chooses `init_infections` number of people and sets them to infected
-    population['current_state'][np.random.choice(N, init_infections, replace=False)] = 1
+    population['current_state'][np.random.choice(N, init_infections, replace=False)] = 2
 
     return population
 
@@ -72,7 +75,7 @@ else:
 """
 def evolve_state(population, C, death_threshold):
     # Filter who is infected currently
-    infected_population_mask=population['current_state']==1
+    infected_population_mask=(population['current_state']==0) | (population['current_state']==1)
     infected_population = population[infected_population_mask]
     # Filter who is uninfected currently
     uninfected_population_mask = population['current_state']==0
@@ -96,17 +99,26 @@ def evolve_state(population, C, death_threshold):
     uninfected_indices = np.where(uninfected_population_mask)[0]
     newly_infected_indices = uninfected_indices[should_infect_mask]
     # update current_state
-    population['current_state'][newly_infected_indices] = 1
+    population['current_state'][newly_infected_indices] = 2 # they are now marked as infected
 
     ## Deal with the infected people
     # Handle people whose infection period ended (checking case_severity to see if they died)
-    dead_population_indices = np.where((population['current_state'] == 1) & 
+    dead_population_indices = np.where((population['current_state'] == 2) & 
                                        (population['infection_period'] == 0) & 
                                        (population['case_severity'] >= death_threshold))[0]
     population['current_state'][dead_population_indices] = -1 # mark them as dead
 
+    recovered_population_indices = np.where((population['current_state'] == 2) & 
+                                       (population['infection_period'] == 0) & 
+                                       (population['case_severity'] < death_threshold))[0]
+    population['current_state'][recovered_population_indices] = 1 # mark them as recovered
+    # reset their infection_period
+    population['infection_period'][recovered_population_indices] = np.random.randint(4, 7)  
+    # reduce case_severity due partial immunization
+    population['case_severity'][recovered_population_indices] *= partial_immunization
+
     # handle infected people whose infection period did not end yet
-    remain_infected_population_indices = np.where((population['current_state'] == 1) &
+    remain_infected_population_indices = np.where((population['current_state'] == 2) &
                                                   (population['infection_period'] != 0))[0]
     population['infection_period'][remain_infected_population_indices] -= 1 
     
@@ -144,14 +156,15 @@ def vaccinate(population, who, how_many):
         vaccinate_population_indices = np.argsort(population[who])[::-1][:how_many]
         
     # reduce case_severity by 90% for selected people 
-    population['case_severity'][vaccinate_population_indices] *= 0.1
+    population['case_severity'][vaccinate_population_indices] *= vaccine_immunization
 
 
 """
 Compute the cost to society that has been incurred at the current state.
 """ 
 def compute_cost(population):
-    was_infected = population['infection_period'] < 4
+    # find indices of people who were infected (including recovered and dead people)
+    was_infected = (population['current_state']==-1) | (population['current_state']==1) | (population['current_state']==2)
     infected_case_severity = np.sum(population['case_severity'][was_infected])
     return infected_case_severity
 
