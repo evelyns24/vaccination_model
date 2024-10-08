@@ -1,5 +1,6 @@
 import numpy as np
 from enum import Enum
+import matplotlib.pyplot as plt
 
 """
 Define the state of the system
@@ -172,40 +173,96 @@ def vaccinate(population, who, how_many):
 
 """
 Compute the cost to society that has been incurred at the current state.
-""" 
+"""
 def compute_cost(population):
-    # find indices of people who were infected (including recovered and dead people)
+    # Define severity thresholds
+    low_threshold = 3
+    medium_threshold = 7
+    high_threshold = 10
+
+    # Find indices of people who were infected (including recovered and dead people)
     was_infected = (population['status']==Status.DEAD.value) | (population['status']==Status.RECOVERED.value) | (population['status']==Status.INFECTED.value)
-    infected_case_severity = np.sum(population['case_severity'][was_infected])
-    return infected_case_severity
+        
+    # Create masks for each severity level
+    low_severity = (population['case_severity'] < low_threshold) & was_infected
+    medium_severity = (population['case_severity'] >= low_threshold) & (population['case_severity'] < medium_threshold) & was_infected
+    high_severity = (population['case_severity'] >= medium_threshold) & (population['case_severity'] < high_threshold) & was_infected
+    death = (population['case_severity'] >= high_threshold) & was_infected
+
+    # Compute costs for each severity level
+    low_cost = np.sum(population['case_severity'][low_severity])
+    medium_cost = np.sum(population['case_severity'][medium_severity])
+    high_cost = np.sum(population['case_severity'][high_severity])
+    death_cost = np.sum(population['case_severity'][death])
+
+    # Compute total cost
+    total_cost = low_cost + medium_cost + high_cost + death_cost
+
+    return {
+        'low_severity': low_cost,
+        'medium_severity': medium_cost,
+        'high_severity': high_cost,
+        'death': death_cost,
+        'total': total_cost
+    }
 
 
-
-
+"""
+Progress the simulation forward by `timesteps` and return cost_breakdown at the end of the simulation period.
+"""
 def run_simulation(population, timesteps, C, T):
     for _ in range(timesteps):
         evolve_state(population, C, T)
 
-    overall_cost = compute_cost(population)
-    return overall_cost
+    cost_breakdown = compute_cost(population)
+    return cost_breakdown
 
+"""
+Generates a stacked bar plot comparing the results of different vaccination policies.
 
+Parameters:
+    policies (list): List of policy names (e.g., ['No policy', 'Connectivity', 'Case Severity', 'Mixed Score'])
+    values (dict): Dictionary where keys are scenario names (e.g., 'Scenario 1', 'Scenario 2') 
+                   and values are lists of costs for each policy in the same order as the policies list.
+    title (str): Title for the plot
+    ylabel (str): Label for the y-axis
 
+Returns:
+    None: Displays the plot using plt.show()
+"""
+def generate_bar_plot(policies, values, title):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    scenarios = list(values.keys())
+    bottom = np.zeros(len(policies))
+    
+    for scenario in scenarios:
+        ax.bar(policies, values[scenario], bottom=bottom, label=scenario)
+        bottom += values[scenario]
+    
+    ax.set_xlabel('Vaccination Policies')
+    ax.set_ylabel('Overall Cost to Society')
+    ax.set_title(title)
+    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    
+    plt.tight_layout()
+    plt.show()
 
-#--------------------Similuations--------------------------------------------
-
-
+##--------------------Simulations--------------------------------------------
 timesteps = 120  # Simulating 120 days
 months = 4
 C = 0.1 # to convert connectivity to probability
 death_threshold = 8  # Threshold for considering an individual as deceased
+results = {}
+categories = ['low_severity', 'medium_severity', 'high_severity', 'death']
 
 # no policy: no vaccines 
-overall_cost = run_simulation(init_population(N, init_infections, max_connectivity, max_severity, seed=0), 
+cost_breakdown = run_simulation(init_population(N, init_infections, max_connectivity, max_severity, seed=0), 
                               timesteps, 
                               C, 
                               death_threshold)
-print(f"Overall Cost if no vaccines at all: {overall_cost:.4f}")
+print(f"Overall Cost if no vaccines at all: {cost_breakdown['total']}")
+results['No policy'] = cost_breakdown
 
 
 ## scenario 1: exactly 3000 vaccines available each month
@@ -215,16 +272,18 @@ for _ in range(months):
     vaccine = 3000
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop, 'connectivity', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Connectivity Policy: {overall_cost:.4f}")
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Connectivity Policy: {cost_breakdown['total']}")
+results['Connectivity'] = cost_breakdown
 
 # policy 2: distributing vaccines based on case_severity
 for _ in range(months):
     vaccine = 3000
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop, 'case_severity', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Case_Severity Policy: {overall_cost:.4f}")
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Case_Severity Policy: {cost_breakdown['total']}")
+results['Case Severity'] = cost_breakdown
 
 # policy 3: distributing vaccines based on mixed_score 
 # (weighted average of connetivity and case_severity)
@@ -232,11 +291,13 @@ for _ in range(months):
     vaccine = 3000
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop, 'mixed_score', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Mixed_Score Policy : {overall_cost:.4f}")
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Mixed_Score Policy : {cost_breakdown['total']}")
+results['Mixed Score'] = cost_breakdown
 
-
-
+# Generate bar plot
+values = {category: [results[policy][category] for policy in results] for category in categories}
+generate_bar_plot(results.keys(), values, 'Cost to society for different vaccination policies when 3000 vaccines are given each month.')
 
 ## scenario 2: vaccines available each month can be anywhere between 2000 and 4000
 print("Scenario 2: 2000 - 4000 vaccines per month")
@@ -246,8 +307,9 @@ for m in range(1,months+1):
     # print(f"Vaccines available in month {m}: {vaccine}")
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop, 'connectivity', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Connectivity Policy: {overall_cost:.4f}")
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Connectivity Policy: {cost_breakdown['total']}")
+results['Connectivity'] = cost_breakdown
 
 # policy 2: distributing vaccines based on case_severity
 for m in range(1,months+1):
@@ -255,8 +317,9 @@ for m in range(1,months+1):
     # print(f"Vaccines available in month {m}: {vaccine}")
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop,'case_severity', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Case_Severity Policy: {overall_cost:.4f}")
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Case_Severity Policy: {cost_breakdown['total']}")
+results['Case Severity'] = cost_breakdown
 
 # policy 3: distributing vaccines based on mixed_score 
 # (weighted average of connetivity and case_severity)
@@ -265,8 +328,10 @@ for m in range(1,months+1):
     # print(f"Vaccines available in month {m}: {vaccine}")
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
     vaccinate(pop,'mixed_score', vaccine)
-    overall_cost = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Mixed_Score Policy: {overall_cost:.4f}")
-    
+    cost_breakdown = run_simulation(pop, 30, C, death_threshold)
+print(f"Overall Cost with Mixed_Score Policy: {cost_breakdown['total']}")
+results['Mixed Score'] = cost_breakdown
 
-
+# Generate bar plot
+values = {category: [results[policy][category] for policy in results] for category in categories}
+generate_bar_plot(results.keys(), values, 'Cost to society for different vaccination policies when 2000-4000 vaccines are given each month.')
