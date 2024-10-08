@@ -45,7 +45,7 @@ class Population:
             default=0
         )
 
-        population['infection_period'] = np.random.randint(4, 7, size=self.N)
+        population['infection_period'] = np.random.randint(8, 14, size=self.N)
         population['status'] = Status.NEVER_INFECTED.value
 
         population['status'][np.random.choice(self.N, self.init_infections, replace=False)] = Status.INFECTED.value
