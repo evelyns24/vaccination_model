@@ -9,8 +9,8 @@ Define the state of the system
 connectivity: integer between 0 and 40 
 – "How many people do I closely interact with in each timestep?"
 
-case_severity: decimal between 0 and 10
-- "If infected, how bad does it get for this person?"
+severity: float between 0 and 100
+- "If infected, what is the cost to society of this person's sickness?"
 
 infection_period: integer between 0 and 6
 - "If I'm currently uninfected, how many days am I going to be infectious for?" -> randomly between 4 and 6 days.
@@ -25,9 +25,9 @@ status: integer between -1 and 2
 N=107000 # Population size
 init_infections = 10 # how many people were infected at start of simulation
 max_connectivity = 40
-max_severity = 10
-vaccine_immunization = 0.1 # vaccines reduce case_severity by 90%
-partial_immunization = 0.1 # reduce case_severity by 90% after recovering from infection
+max_severity = 100
+vaccine_immunization = 0.1 # vaccines reduce severity by 90%
+partial_immunization = 0.1 # reduce severity by 90% after recovering from infection
 
 class Status(Enum):
     DEAD = -1
@@ -35,23 +35,39 @@ class Status(Enum):
     RECOVERED = 1
     INFECTED = 2
 
-# define a structured data type to represent a person
-Person = [  ('connectivity','i'),
-            ('case_severity','f'),
-            ('infection_period','i'),
-            ('status','i')] 
-
 """
 initializes a population and returns it
 """
 def init_population(N, init_infections, max_connectivity, max_severity, seed=0):
+    # define a structured data type to represent a person
+    Person = [  ('connectivity','i'),
+                ('severity', 'f'),
+                ('infection_period','i'),
+                ('status','i')] 
     population=np.zeros(N, dtype=Person)
 
-    # for reproducibilty
-    np.random.seed(seed)
+    np.random.seed(seed) # use the same random seed for reproducibilty
     # Initialize the state
     population['connectivity'] = np.random.randint(0, max_connectivity+1, size=N)
-    population['case_severity'] = np.random.random(size=N)*max_severity
+
+    # Generate random values between 0 and 100
+    severity_values = np.random.random(size=N) * 100
+
+    # Create severity categories based on the values
+    population['severity'] = np.select(
+        [
+            severity_values >= 92.5,
+            severity_values >= 51.4,
+            severity_values >= 8.4
+        ],
+        [
+            100,
+            80,
+            2
+        ],
+        default=0
+    )
+
     population['infection_period'] = np.random.randint(4, 7, size=N)  
     population['status'] = Status.NEVER_INFECTED.value  # Initially, all are never infected (uninfected)
 
@@ -110,20 +126,20 @@ def evolve_state(population, C, death_threshold):
     population['status'][newly_infected_indices] = Status.INFECTED.value # they are now marked as infected
 
     ## Deal with the infected people
-    # Handle people whose infection period ended (checking case_severity to see if they died)
+    # Handle people whose infection period ended (checking severity to see if they died)
     dead_population_indices = np.where((population['status'] == Status.INFECTED.value) & 
                                        (population['infection_period'] == 0) & 
-                                       (population['case_severity'] >= death_threshold))[0]
+                                       (population['severity'] == 100))[0]
     population['status'][dead_population_indices] = -1 # mark them as dead
 
     recovered_population_indices = np.where((population['status'] == Status.INFECTED.value) & 
                                        (population['infection_period'] == 0) & 
-                                       (population['case_severity'] < death_threshold))[0]
+                                       (population['severity'] <= 100))[0]
     population['status'][recovered_population_indices] = Status.RECOVERED.value # mark them as recovered
     # reset their infection_period
     population['infection_period'][recovered_population_indices] = np.random.randint(4, 7)  
-    # reduce case_severity due partial immunization
-    population['case_severity'][recovered_population_indices] *= partial_immunization
+    # reduce severity by partial immunization
+    population['severity'][recovered_population_indices] *= partial_immunization
 
     # handle infected people whose infection period did not end yet
     remain_infected_population_indices = np.where((population['status'] == Status.INFECTED.value) &
@@ -133,13 +149,13 @@ def evolve_state(population, C, death_threshold):
 
 """
 Returns the score of each person in the population. The score of an individual is a 
-weighted average of connectivity and case_severity. 
+weighted average of connectivity and severity. 
 People with highest score will get vaccine in mixed_score policy
 Parameter:
-    - w_c is the weighting factor for connectivity and so (1-w_c) is the weighting factor for case_severity
+    - w_c is the weighting factor for connectivity and so (1-w_c) is the weighting factor for severity
 """
 def compute_score(population, w_c):
-    score = (population['connectivity']*w_c/max_connectivity) + (population['case_severity']*(1-w_c)/max_severity)
+    score = (population['connectivity']*w_c/max_connectivity) + (population['severity']*(1-w_c)/max_severity)
     
     # only vaccinate people not previously infected to avoid double counting immunity
     # assign score=0 to those people
@@ -167,33 +183,28 @@ def vaccinate(population, who, how_many):
         # sort indices based on 'who' and select the top individuals
         vaccinate_population_indices = np.argsort(population[who])[::-1][:how_many]
         
-    # reduce case_severity by 90% for selected people 
-    population['case_severity'][vaccinate_population_indices] *= vaccine_immunization
+    # reduce severity by 90% for selected people 
+    population['severity'][vaccinate_population_indices] *= vaccine_immunization
 
 
 """
 Compute the cost to society that has been incurred at the current state.
 """
 def compute_cost(population):
-    # Define severity thresholds
-    low_threshold = 3
-    medium_threshold = 7
-    high_threshold = 10
-
     # Find indices of people who were infected (including recovered and dead people)
     was_infected = (population['status']==Status.DEAD.value) | (population['status']==Status.RECOVERED.value) | (population['status']==Status.INFECTED.value)
         
     # Create masks for each severity level
-    low_severity = (population['case_severity'] < low_threshold) & was_infected
-    medium_severity = (population['case_severity'] >= low_threshold) & (population['case_severity'] < medium_threshold) & was_infected
-    high_severity = (population['case_severity'] >= medium_threshold) & (population['case_severity'] < high_threshold) & was_infected
-    death = (population['case_severity'] >= high_threshold) & was_infected
+    low_severity = (population['severity'] == 0) & was_infected
+    medium_severity = (population['severity'] == 2) & was_infected
+    high_severity = (population['severity'] == 80) & was_infected
+    death = (population['severity'] == 100) & was_infected
 
     # Compute costs for each severity level
-    low_cost = np.sum(population['case_severity'][low_severity])
-    medium_cost = np.sum(population['case_severity'][medium_severity])
-    high_cost = np.sum(population['case_severity'][high_severity])
-    death_cost = np.sum(population['case_severity'][death])
+    low_cost = np.sum(population['severity'][low_severity])
+    medium_cost = np.sum(population['severity'][medium_severity])
+    high_cost = np.sum(population['severity'][high_severity])
+    death_cost = np.sum(population['severity'][death])
 
     # Compute total cost
     total_cost = low_cost + medium_cost + high_cost + death_cost
@@ -251,7 +262,7 @@ def generate_bar_plot(policies, values, title):
 ##--------------------Simulations--------------------------------------------
 timesteps = 120  # Simulating 120 days
 months = 4
-C = 0.1 # to convert connectivity to probability
+C = 0.05 # to convert connectivity to probability
 death_threshold = 8  # Threshold for considering an individual as deceased
 results = {}
 categories = ['low_severity', 'medium_severity', 'high_severity', 'death']
@@ -276,17 +287,17 @@ for _ in range(months):
 print(f"Overall Cost with Connectivity Policy: {cost_breakdown['total']}")
 results['Connectivity'] = cost_breakdown
 
-# policy 2: distributing vaccines based on case_severity
+# policy 2: distributing vaccines based on severity
 for _ in range(months):
     vaccine = 3000
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
-    vaccinate(pop, 'case_severity', vaccine)
+    vaccinate(pop, 'severity', vaccine)
     cost_breakdown = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Case_Severity Policy: {cost_breakdown['total']}")
+print(f"Overall Cost with Severity Policy: {cost_breakdown['total']}")
 results['Case Severity'] = cost_breakdown
 
 # policy 3: distributing vaccines based on mixed_score 
-# (weighted average of connetivity and case_severity)
+# (weighted average of connetivity and severity)
 for _ in range(months):
     vaccine = 3000
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
@@ -311,18 +322,18 @@ for m in range(1,months+1):
 print(f"Overall Cost with Connectivity Policy: {cost_breakdown['total']}")
 results['Connectivity'] = cost_breakdown
 
-# policy 2: distributing vaccines based on case_severity
+# policy 2: distributing vaccines based on severity
 for m in range(1,months+1):
     vaccine = np.random.randint(2000, 4001)
     # print(f"Vaccines available in month {m}: {vaccine}")
     pop = init_population(N, init_infections, max_connectivity, max_severity, seed=0)
-    vaccinate(pop,'case_severity', vaccine)
+    vaccinate(pop,'severity', vaccine)
     cost_breakdown = run_simulation(pop, 30, C, death_threshold)
-print(f"Overall Cost with Case_Severity Policy: {cost_breakdown['total']}")
+print(f"Overall Cost with Severity Policy: {cost_breakdown['total']}")
 results['Case Severity'] = cost_breakdown
 
 # policy 3: distributing vaccines based on mixed_score 
-# (weighted average of connetivity and case_severity)
+# (weighted average of connetivity and severity)
 for m in range(1,months+1):
     vaccine = np.random.randint(2000, 4001)
     # print(f"Vaccines available in month {m}: {vaccine}")
