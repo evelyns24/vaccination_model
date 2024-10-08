@@ -158,17 +158,15 @@ class Population:
 
         fig, ax = plt.subplots(figsize=(8, 6))
         bar_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-        bottom = 0
-        for i in range(len(categories)):
-            ax.bar('Population Status', counts[i], bottom=bottom, color=bar_colors[i], label=categories[i])
-            bottom += counts[i]
+        ax.bar(categories, counts, color=bar_colors)
 
         ax.set_ylabel('Number of People')
-        ax.set_title('Population Status')
-        ax.legend(title='Severity')
+        ax.set_title('Population Outcomes After Simulation')
 
         plt.tight_layout()
         plt.show()
+
+
 
 # Test cases
 N = 107000
@@ -184,13 +182,15 @@ months = random_number = random.randint(3, 12)
 cost_results = {}
 people_results = {}
 
+
+
 # Scenario 1: No policy (no vaccines)
 print("Scenario 1: No policy (no vaccines)")
 total_cost = 0
 for _ in range(months):
-        pop = Population(N, init_infections, max_connectivity, max_severity, vaccine_immunization, partial_immunization, seed=0)
-        cost_breakdown, _ = pop.run_simulation(30, C, death_threshold)
-        total_cost += cost_breakdown['total']
+    pop = Population(N, init_infections, max_connectivity, max_severity, vaccine_immunization, partial_immunization, seed=0)
+    cost_breakdown, _ = pop.run_simulation(30, C, death_threshold)
+    total_cost += cost_breakdown['total']
 print(f"Cost for control: {total_cost}")
 
 # Scenario 2: Exactly 3000 vaccines per month
@@ -216,3 +216,42 @@ for policy in ['connectivity', 'severity', 'mixed_score']:
         cost_breakdown, _ = pop.run_simulation(30, C, death_threshold)
         total_cost += cost_breakdown['total']
     print(f"Cost for {policy} policy: {total_cost}")
+
+
+def plot_policy_outcomes(policy_results):
+    # Define the specific categories to plot
+    categories = ['Never Sick', 'Asymptomatic', 'Fatal']
+    bar_width = 0.25
+    index = np.arange(len(categories))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = ['#1f77b4', '#ff7f0e', '#d62728']  # Colors for each policy
+
+    # Loop through each policy's breakdown to create the bars
+    for i, (policy, breakdown) in enumerate(policy_results.items()):
+        counts = [breakdown['never_sick'], breakdown['asymptomatic'], breakdown['fatal']]
+        ax.bar(index + i * bar_width, counts, bar_width, label=policy, color=colors[i])
+
+    ax.set_xlabel('Outcomes')
+    ax.set_ylabel('Number of People')
+    ax.set_title('Final Outcomes for Each Policy (Selected Categories)')
+    ax.set_xticks(index + bar_width)
+    ax.set_xticklabels(categories)
+    ax.legend(title='Vaccination Policy')
+
+    plt.tight_layout()
+    plt.show()
+
+
+policy_results = {}
+
+# Simulate for each policy
+for policy in ['connectivity', 'severity', 'mixed_score']:
+    pop = Population(N, init_infections, max_connectivity, max_severity, vaccine_immunization, partial_immunization, seed=0)
+    vaccine = 3000
+    pop.vaccinate(policy, vaccine)
+    _, ppl_breakdown = pop.run_simulation(30, C, death_threshold)
+    policy_results[policy] = ppl_breakdown
+
+# Plot the outcomes for each policy
+plot_policy_outcomes(policy_results)
