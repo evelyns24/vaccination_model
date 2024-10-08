@@ -1,6 +1,7 @@
 import numpy as np
 from enum import Enum
 import matplotlib.pyplot as plt
+import random
 
 class Status(Enum):
     DEAD = -1
@@ -172,22 +173,25 @@ class Population:
 # Test cases
 N = 107000
 init_infections = 10
-max_connectivity = 40
+max_connectivity = 50
 max_severity = 100
 vaccine_immunization = 0.1
 partial_immunization = 0.1
 timesteps = 120
-C = 0.05
+C = 0.0375
 death_threshold = 8
-months = 4
+months = random_number = random.randint(3, 12)
 cost_results = {}
 people_results = {}
 
 # Scenario 1: No policy (no vaccines)
 print("Scenario 1: No policy (no vaccines)")
-pop = Population(N, init_infections, max_connectivity, max_severity, vaccine_immunization, partial_immunization, seed=0)
-cost_breakdown, _ = pop.run_simulation(timesteps, C, death_threshold)
-print(f"Cost for No policy: {cost_breakdown['total']}")
+total_cost = 0
+for _ in range(months):
+        pop = Population(N, init_infections, max_connectivity, max_severity, vaccine_immunization, partial_immunization, seed=0)
+        cost_breakdown, _ = pop.run_simulation(30, C, death_threshold)
+        total_cost += cost_breakdown['total']
+print(f"Cost for control: {total_cost}")
 
 # Scenario 2: Exactly 3000 vaccines per month
 print("\nScenario 2: Exactly 3000 vaccines per month")
